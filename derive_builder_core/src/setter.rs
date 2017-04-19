@@ -41,7 +41,7 @@ pub struct Setter<'a> {
     /// How the setter method takes and returns `self` (e.g. mutably).
     pub pattern: BuilderPattern,
     /// Attributes which will be attached to this setter fn.
-    pub attrs: &'a [syn::Attribute],
+    pub attrs: Vec<&'a syn::Attribute>,
     /// Name of this setter fn.
     pub ident: &'a syn::Ident,
     /// Name of the target field.
@@ -67,7 +67,7 @@ impl<'a> ToTokens for Setter<'a> {
             let vis = self.visibility;
             let field_ident = self.field_ident;
             let ident = self.ident;
-            let attrs = self.attrs;
+            let attrs = &self.attrs;
             let deprecation_notes = self.deprecation_notes;
             let clone = self.bindings.clone_trait();
             let option = self.bindings.option_ty();
@@ -156,7 +156,7 @@ macro_rules! default_setter {
             try_setter: false,
             visibility: &syn::Visibility::Public,
             pattern: BuilderPattern::Mutable,
-            attrs: &vec![],
+            attrs: vec![],
             ident: &syn::Ident::new("foo"),
             field_ident: &syn::Ident::new("foo"),
             field_type: &syn::parse_type("Foo").unwrap(),
@@ -247,13 +247,13 @@ mod tests {
     // including try_setter
     #[test]
     fn full() {
-        let attrs = vec![syn::parse_outer_attr("#[some_attr]").unwrap()];
+        let attr = syn::parse_outer_attr("#[some_attr]").unwrap();
 
         let mut deprecated = DeprecationNotes::default();
         deprecated.push("Some example.".to_string());
 
         let mut setter = default_setter!();
-        setter.attrs = attrs.as_slice();
+        setter.attrs = vec![&attr];
         setter.generic_into = true;
         setter.deprecation_notes = &deprecated;
         setter.try_setter = true;

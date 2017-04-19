@@ -59,12 +59,15 @@ pub struct Builder<'a> {
     pub doc_comment: Option<syn::Attribute>,
     /// Emit deprecation notes to the user.
     pub deprecation_notes: DeprecationNotes,
+    /// Attributes forwarded to the struct from the target type.
+    pub attrs: &'a [syn::Attribute],
 }
 
 impl<'a> ToTokens for Builder<'a> {
     fn to_tokens(&self, tokens: &mut Tokens) {
         if self.enabled {
             trace!("Deriving builder `{}`.", self.ident);
+            let attrs = self.attrs;
             let builder_vis = self.visibility;
             let builder_ident = self.ident;
             let derives = self.derives;
@@ -85,6 +88,7 @@ impl<'a> ToTokens for Builder<'a> {
             tokens.append(quote!(
                 #[derive(Default, Clone #( , #derives)* )]
                 #builder_doc_comment
+                #(#attrs)*
                 #builder_vis struct #builder_ident #impl_generics #where_clause {
                     #(#builder_fields)*
                 }
@@ -143,6 +147,7 @@ macro_rules! default_builder {
             functions: vec![quote!(fn bar() -> { unimplemented!() })],
             doc_comment: None,
             deprecation_notes: DeprecationNotes::default(),
+            attrs: &vec![],
         }
     }
 }

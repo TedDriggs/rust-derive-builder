@@ -101,6 +101,8 @@ impl From<OptionsBuilder<StructMode>> for (StructOptions, OptionsBuilder<FieldMo
         let field_defaults = OptionsBuilder::<FieldMode> {
             setter_enabled: b.setter_enabled,
             builder_pattern: b.builder_pattern,
+            forward_attrs: b.forward_attrs,
+            attrs: vec![],
             setter_name: None,
             setter_prefix: b.setter_prefix,
             setter_vis: b.setter_vis,
@@ -123,6 +125,7 @@ impl From<OptionsBuilder<StructMode>> for (StructOptions, OptionsBuilder<FieldMo
             ),
             builder_visibility: m.builder_vis.unwrap_or(m.build_target_vis),
             builder_pattern: b.builder_pattern.unwrap_or_default(),
+            attrs: b.attrs,
             build_target_ident: syn::Ident::new(m.build_target_name),
             derives: m.derive_traits.unwrap_or_default(),
             deprecation_notes: m.deprecation_notes,

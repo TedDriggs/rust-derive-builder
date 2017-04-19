@@ -11,6 +11,8 @@
 //!    struct field on the input/target type. Once complete, these get converted into
 //!    `FieldOptions` instances.
 
+use std::collections::HashSet;
+
 use syn;
 use derive_builder_core::BuilderPattern;
 
@@ -51,6 +53,11 @@ pub fn field_options_from(f: syn::Field,
 #[derive(Debug, Clone)]
 pub struct OptionsBuilder<Mode> {
     builder_pattern: Option<BuilderPattern>,
+    /// The attribute names that should be forwarded when seen.
+    forward_attrs: HashSet<syn::Ident>,
+    
+    /// The attributes to carry forward to the output.
+    attrs: Vec<syn::Attribute>,
     setter_enabled: Option<bool>,
     setter_prefix: Option<String>,
     /// Takes precedence over `setter_prefix`
@@ -77,6 +84,8 @@ impl<Mode> From<Mode> for OptionsBuilder<Mode> {
     fn from(mode: Mode) -> OptionsBuilder<Mode> {
         OptionsBuilder {
             builder_pattern: None,
+            forward_attrs: HashSet::new(),
+            attrs: vec![],
             setter_enabled: None,
             setter_prefix: None,
             setter_name: None,
@@ -148,11 +157,18 @@ impl<Mode> OptionsBuilder<Mode> where
     }
 
     pub fn parse_attributes<'a, T>(&mut self, attributes: T) -> &mut Self where
-        T: IntoIterator<Item=&'a syn::Attribute>
-    {
+        T: Clone + IntoIterator<Item=&'a syn::Attribute>
+    {        
         trace!("Parsing attributes.");
-        for attr in attributes {
+        for attr in attributes.clone() {
             self.parse_attribute(attr);
+        }
+        
+        // Once we've found and processed the builder attributes, we need
+        // to scan the list again to see if there are attributes we're
+        // expected to forward.
+        for attr in attributes {
+            self.forward_attr(attr);
         }
 
         self
@@ -310,7 +326,10 @@ impl<Mode> OptionsBuilder<Mode> where
             },
             "derive" => {
                 self.mode.parse_derive(nested);
-            }
+            },
+            "forward" => {
+                self.parse_forward_list(nested);
+            },
             _ => {
                 panic!("Unknown option `{}` {}.", ident.as_ref(), self.where_diagnostics())
             }
@@ -458,6 +477,29 @@ impl<Mode> OptionsBuilder<Mode> where
         trace!("Parsing skip setter `{:?}`", skip);
         self.setter_enabled(!parse_lit_as_bool(skip).unwrap());
     }
+    
+    fn parse_forward_list(&mut self, nested: &[syn::NestedMetaItem]) {
+        for item in nested {
+            if let syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(ref ident)) = *item {
+                self.forward_attrs.insert(ident.clone());
+            } else {
+                panic!("Unknown forward pattern `{:?}` {}.", item, self.where_diagnostics());
+            }
+        }
+    }
+    
+    fn forward_attr(&mut self, attr: &syn::Attribute) {
+        if !self.mode.struct_mode() || should_forward_attr(&self.forward_attrs, attr) {
+            self.attrs.push(attr.clone());
+        }
+    }
+    
+    fn drop_excess_attrs(&mut self) {
+        trace!("Dropping attributes not in the forwarding list");
+        
+        let forwards = &self.forward_attrs;
+        self.attrs.retain(|a| should_forward_attr(forwards, a));
+    }
 
     /// Provide a diagnostic _where_-clause for panics.
     ///
@@ -495,4 +537,37 @@ fn parse_lit_as_bool(lit: &syn::Lit) -> Result<bool, String> {
             }
         })
     }
+}
+
+/// Gets the identifier for an attribute meta-item. When used on the outermost
+/// `NestedMetaItem`, this will return the first word of the attribute.
+fn as_ident(meta_item: &syn::MetaItem) -> &syn::Ident {
+    match *meta_item {
+        syn::MetaItem::Word(ref ident) |
+        syn::MetaItem::List(ref ident, _) |
+        syn::MetaItem::NameValue(ref ident, _) => ident
+    }
+}
+
+fn is_always_forwarded(ident: &syn::Ident) -> bool {
+    match ident.as_ref() {
+        "doc" | "cfg" | "allow" => true,
+        _ => false
+    }
+}
+
+/// Checks if an attribute should be forwarded. 
+///
+/// This can be true for two reasons:
+///
+/// 1. The attribute is on the "always-forward" list. See `is_always_forwarded` for more.
+/// 1. The attribute ident is in the caller-provided set of attributes being forwarded.
+fn should_forward_attr(forwards: &HashSet<syn::Ident>, attr: &syn::Attribute) -> bool {
+    if attr.style != syn::AttrStyle::Outer {
+        return false;
+    }
+    
+    let attr_ident = as_ident(&attr.value);
+    
+    is_always_forwarded(attr_ident) || forwards.contains(as_ident(&attr.value))
 }

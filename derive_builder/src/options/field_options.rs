@@ -1,7 +1,7 @@
 use syn;
 use derive_builder_core::{DeprecationNotes, BuilderPattern, Setter, Initializer, BuilderField,
                           Block, Bindings};
-use options::DefaultExpression;
+use options::{DefaultExpression, should_forward_attr};
 
 /// These field options define how the builder interacts with the field.
 #[derive(Debug, Clone)]
@@ -27,7 +27,8 @@ pub struct FieldOptions {
     /// Emit deprecation notes to the user,
     /// e.g. if a deprecated attribute was used in `derive_builder`.
     pub deprecation_notes: DeprecationNotes,
-    /// Setter attributes, e.g. `#[allow(non_snake_case)]`.
+    /// Field and setter attributes, e.g. `#[allow(non_snake_case)]`.
+    /// These will be filtered later before going to the field and setter.
     pub attrs: Vec<syn::Attribute>,
     /// Bindings to libstd or libcore.
     pub bindings: Bindings,
@@ -58,12 +59,21 @@ impl DefaultExpression {
 impl FieldOptions {
     /// Returns a `Setter` according to the options.
     pub fn as_setter<'a>(&'a self) -> Setter<'a> {
+        
+        // Attributes used by other proc-macro crates likely don't work
+        // on setters, but we want to forward `allow`, `cfg`, and `doc`
+        // to maintain consistency across setters and fields.
+        let attrs = self.attrs
+            .iter()
+            .filter(|a| should_forward_attr(&Default::default(), a))
+            .collect();
+        
         Setter {
             enabled: self.setter_enabled,
             try_setter: self.try_setter,
             visibility: &self.setter_visibility,
             pattern: self.builder_pattern,
-            attrs: &self.attrs,
+            attrs: attrs,
             ident: &self.setter_ident,
             field_ident: &self.field_ident,
             field_type: &self.field_type,
@@ -90,7 +100,7 @@ impl FieldOptions {
             bindings: self.bindings,
         }
     }
-
+    
     /// Returns a `BuilderField` according to the options.
     pub fn as_builder_field<'a>(&'a self) -> BuilderField<'a> {
         BuilderField {
@@ -101,5 +111,37 @@ impl FieldOptions {
             attrs: &self.attrs,
             bindings: self.bindings,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    /// This test makes sure that attributes are filtered and forwarded properly from
+    /// the FieldOptions struct to the various `derive_builder_core` structs.
+    #[test]
+    fn forwarding() {
+        let allow_attr = syn::parse_outer_attr(r#"#[allow(non_snake_case)]"#).unwrap();
+        let serde_attr = syn::parse_outer_attr(r#"#[serde(rename = "hi")]"#).unwrap();
+        
+        let opts = FieldOptions {
+            setter_enabled: true, 
+            builder_pattern: Default::default(),
+            setter_ident: syn::Ident::new("Foo"),
+            setter_visibility: syn::Visibility::Public,
+            default_expression: None,
+            use_default_struct: false,
+            field_ident: syn::Ident::new("bar"),
+            field_type: syn::parse_type("String").unwrap(),
+            setter_into: true,
+            deprecation_notes: Default::default(),
+            attrs: vec![allow_attr.clone(), serde_attr.clone()],
+            bindings: Default::default(),
+            try_setter: false,
+        };
+        
+        assert_eq!(vec![&allow_attr], opts.as_setter().attrs);
+        assert_eq!(vec![allow_attr, serde_attr].as_slice(), opts.as_builder_field().attrs);
     }
 }

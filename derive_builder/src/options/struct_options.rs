@@ -13,6 +13,8 @@ pub struct StructOptions {
     pub derives: Vec<syn::Ident>,
     /// How the build method takes and returns `self` (e.g. mutably).
     pub builder_pattern: BuilderPattern,
+    /// Attributes forwarded from the target type.
+    pub attrs: Vec<syn::Attribute>,
     /// Target struct name.
     pub build_target_ident: syn::Ident,
     /// Represents lifetimes and type parameters attached to the declaration of items.
@@ -39,6 +41,7 @@ impl StructOptions {
             derives: &self.derives,
             generics: Some(&self.generics),
             visibility: &self.builder_visibility,
+            attrs: self.attrs.as_slice(),
             fields: Vec::with_capacity(self.struct_size_hint),
             functions: Vec::with_capacity(self.struct_size_hint),
             doc_comment: None,

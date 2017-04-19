@@ -36,6 +36,10 @@ derive_builder_core = { version = "0.1", path = "../derive_builder_core" }
 skeptic = { version = "0.9", optional = true }
 compiletest_rs = { version = "0.2", optional = true }
 
+# used for forward_attr example; should be removed at some point.
+serde = { version = "0.9" }
+serde_derive = { version = "0.9" }
+
 [build-dependencies]
 skeptic = { version = "0.9", optional = true }
 log = { version = "0.3", optional = true }

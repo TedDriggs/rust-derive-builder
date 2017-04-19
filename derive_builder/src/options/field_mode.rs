@@ -40,16 +40,6 @@ impl OptionsBuilder<FieldMode> {
         builder.parse_attributes(&f.attrs);
 
         trace!("Filtering attributes for builder field and setter.");
-        builder.mode.setter_attrs = Some(f.attrs
-            .iter()
-            .filter(|a| {
-                let keep = filter_attr(a);
-                trace!("{} attribute `{:?}`", if keep { "Keeping" } else { "Ignoring" }, a);
-                keep
-            })
-            .map(|x| x.clone())
-            .collect());
-
         builder
     }
 
@@ -76,6 +66,8 @@ impl OptionsBuilder<FieldMode> {
         OptionsBuilder::<FieldMode> {
             setter_enabled: f!(setter_enabled),
             builder_pattern: f!(builder_pattern),
+            forward_attrs: self.forward_attrs.union(&defaults.forward_attrs).cloned().collect(),
+            attrs: self.attrs,
             setter_name: f!(setter_name),
             setter_prefix: f!(setter_prefix),
             setter_vis: f!(setter_vis),
@@ -116,7 +108,13 @@ impl OptionsBuilderMode for FieldMode {
 }
 
 impl From<OptionsBuilder<FieldMode>> for FieldOptions {
-    fn from(b: OptionsBuilder<FieldMode>) -> FieldOptions {
+    fn from(mut b: OptionsBuilder<FieldMode>) -> FieldOptions {
+        // Because inherited properties are merged AFTER field parsing,
+        // we don't have a way of knowing during parsing which attributes
+        // we are supposed to retain. Rather than reworking that data
+        // flow, the field mode keeps ALL attributes seen during parsing
+        // and drops the excess before generating the FieldOptions struct.
+        b.drop_excess_attrs();
         let field_ident = b.mode.field_ident;
         let field_type = b.mode.field_type;
         let setter_prefix = b.setter_prefix;
@@ -146,34 +144,7 @@ impl From<OptionsBuilder<FieldMode>> for FieldOptions {
             bindings: Bindings {
                 no_std: b.no_std.unwrap_or(false),
             },
-            attrs: b.mode.setter_attrs.clone().unwrap_or_default(),
+            attrs: b.attrs,
         }
     }
-}
-
-fn filter_attr(attr: &&syn::Attribute) -> bool {
-    if attr.style != syn::AttrStyle::Outer {
-        return false
-    }
-
-    if attr.is_sugared_doc == true {
-        if let syn::MetaItem::NameValue(ref ident, _) = attr.value {
-            // example:
-            // Attribute { style: Outer, value: NameValue(Ident("doc"), Str("/// This is a doc comment for a field", Cooked)), is_sugared_doc: true }
-            if ident == "doc" {
-                return true
-            }
-        }
-    } else {
-        if let syn::MetaItem::List(ref ident, _) = attr.value {
-            // example:
-            // Attribute { style: Outer, value: List(Ident("allow"), [MetaItem(Word(Ident("non_snake_case")))]), is_sugared_doc: false }
-            return match ident.as_ref() {
-                "cfg" => true,
-                "allow" => true,
-                _ => false,
-            }
-        }
-    }
-    false
 }
