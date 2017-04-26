@@ -367,6 +367,11 @@
 //! }
 //! ```
 //!
+//! ## Build Method Customization
+//! You can rename or suppress the auto-generated build method, leaving you free to implement 
+//! your own version. Suppression is done using `#[builder(build_fn(skip))]` at the struct level,
+//! and renaming is done with `#[builder(build_fn(name = "YOUR_NAME"))]`.
+//!
 //! ## Additional Trait Derivations
 //!
 //! You can derive additional traits on the builder, including traits defined by other crates:
@@ -387,7 +392,7 @@
 //! }
 //! ```
 //!
-//! Attributes declared for those crates are _not_ forwarded to the fields on the builder.
+//! Attributes declared for those traits are _not_ forwarded to the fields on the builder.
 //!
 //! ## Documentation Comments and Attributes
 //!

@@ -4,14 +4,14 @@ function main {
   export CARGO_TARGET_DIR="../target/__checkfeatures"
 
   commands=(
-    "cd derive_builder && rustup run 1.15.0 cargo test --all --color always --features \"skeptic_tests struct_default\""
+    "cd derive_builder && rustup run 1.15.0 cargo test --all --color always --features \"skeptic_tests struct_default private_fields\""
   )
 
   dev/travis-run-all.sh "${commands[@]}"
 }
 
 function base_dir {
-  if [ uname -s != "Darwin" ] -a hash readlink 2>/dev/null; then
+  if [ $(uname -s) != "Darwin" ] && hash readlink 2>/dev/null; then
     # use readlink, if installed, to follow symlinks
     local __DIR="$(dirname "$(readlink -f "$0")")"
   else

@@ -41,9 +41,7 @@ pub fn struct_options_from(ast: &syn::MacroInput) -> (StructOptions, OptionsBuil
 }
 
 ///  Get the `FieldOptions` for a field with respect to some custom default values.
-pub fn field_options_from(f: syn::Field,
-                          defaults: &OptionsBuilder<FieldMode>)
-                          -> FieldOptions {
+pub fn field_options_from(f: syn::Field, defaults: &OptionsBuilder<FieldMode>) -> FieldOptions {
     OptionsBuilder::<FieldMode>::parse(f).with_defaults(defaults).into()
 }
 
@@ -63,6 +61,7 @@ pub struct OptionsBuilder<Mode> {
     /// Takes precedence over `setter_prefix`
     setter_name: Option<String>,
     setter_vis: Option<syn::Visibility>,
+    field_vis: Option<syn::Visibility>,
     default_expression: Option<DefaultExpression>,
     setter_into: Option<bool>,
     try_setter: Option<bool>,
@@ -78,6 +77,8 @@ pub trait OptionsBuilderMode: ::std::fmt::Debug {
     /// Provide a diagnostic _where_-clause for panics.
     fn where_diagnostics(&self) -> String;
     fn struct_mode(&self) -> bool;
+    
+    fn parse_build_fn_options(&mut self, nested: &[syn::NestedMetaItem]);
 }
 
 impl<Mode> From<Mode> for OptionsBuilder<Mode> {
@@ -91,6 +92,7 @@ impl<Mode> From<Mode> for OptionsBuilder<Mode> {
             setter_name: None,
             setter_vis: None,
             try_setter: None,
+            field_vis: None,
             default_expression: None,
             setter_into: None,
             no_std: None,
@@ -99,8 +101,8 @@ impl<Mode> From<Mode> for OptionsBuilder<Mode> {
     }
 }
 
-impl<Mode> OptionsBuilder<Mode> where
-    Mode: OptionsBuilderMode
+impl<Mode> OptionsBuilder<Mode>
+    where Mode: OptionsBuilderMode
 {
     impl_setter!{
         ident: setter_enabled,
@@ -112,6 +114,12 @@ impl<Mode> OptionsBuilder<Mode> where
         ident: builder_pattern,
         desc: "builder pattern",
         map: |x: BuilderPattern| { x },
+    }
+
+    impl_setter!{
+        ident: field_public for field_vis,
+        desc: "field visibility",
+        map: |x: bool| { if x { syn::Visibility::Public } else { syn::Visibility::Inherited } },
     }
 
     impl_setter!{
@@ -269,7 +277,7 @@ impl<Mode> OptionsBuilder<Mode> where
                 if self.mode.struct_mode() {
                     self.no_std(true)
                 } else {
-                    panic!("Support for `#![no_std]` can only be set on the stuct level \
+                    panic!("Support for `#![no_std]` can only be set on the struct level \
                             (but found {}).", self.where_diagnostics())
                 }
             },
@@ -310,11 +318,7 @@ impl<Mode> OptionsBuilder<Mode> where
 
     /// e.g `setter(skip)` in `#[builder(setter(skip))]`
     #[allow(non_snake_case)]
-    fn parse_builder_options_list(
-        &mut self,
-        ident: &syn::Ident,
-        nested: &[syn::NestedMetaItem]
-    ) {
+    fn parse_builder_options_list(&mut self, ident: &syn::Ident, nested: &[syn::NestedMetaItem]) {
         trace!("Parsing list `{}({:?})`", ident.as_ref(), nested);
         match ident.as_ref() {
             "setter" => {
@@ -324,11 +328,17 @@ impl<Mode> OptionsBuilder<Mode> where
                     self.setter_enabled(true);
                 }
             },
+            "build_fn" => {
+                self.mode.parse_build_fn_options(nested)
+            },
             "derive" => {
                 self.mode.parse_derive(nested);
             },
             "forward" => {
                 self.parse_forward_list(nested);
+            },
+            "field" => {
+                self.parse_field_options(nested);
             },
             _ => {
                 panic!("Unknown option `{}` {}.", ident.as_ref(), self.where_diagnostics())
@@ -336,12 +346,25 @@ impl<Mode> OptionsBuilder<Mode> where
         }
     }
 
+    fn parse_field_options(&mut self, nested: &[syn::NestedMetaItem]) {
+        trace!("Parsing field options.");
+        for x in nested {
+            match *x {
+                syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(ref ident)) => {
+                    match ident.as_ref() {
+                        "private" => self.field_public(false),
+                        "public" => self.field_public(true),
+                        _ => panic!("Unknown field word `{:?}`. {}", ident, self.where_diagnostics())
+                    }
+                },
+                _ => panic!("Unknown field option `{:?}`. {}", x, self.where_diagnostics())
+            }
+        }
+    }
+
     /// e.g `skip` in `#[builder(setter(skip))]`
     #[allow(non_snake_case)]
-    fn parse_setter_options(
-        &mut self,
-        nested: &[syn::NestedMetaItem]
-    ) {
+    fn parse_setter_options(&mut self, nested: &[syn::NestedMetaItem]) {
         trace!("Parsing setter options.");
         for x in nested {
             match *x {
@@ -418,11 +441,7 @@ impl<Mode> OptionsBuilder<Mode> where
 
     /// e.g `setter(skip)` in `#[builder(setter(skip))]`
     #[allow(non_snake_case)]
-    fn parse_setter_options_list(
-        &mut self,
-        ident: &syn::Ident,
-        nested: &[syn::NestedMetaItem]
-    ) {
+    fn parse_setter_options_list(&mut self, ident: &syn::Ident, nested: &[syn::NestedMetaItem]) {
         trace!("Setter Options - Parsing list `{}({:?})`", ident.as_ref(), nested);
         match ident.as_ref() {
             _ => {
