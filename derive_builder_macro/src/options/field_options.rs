@@ -259,6 +259,7 @@ mod tests {
                         into: Some(true),
                         skip: None,
                         name: None,
+                        prefix: None,
                     },
                     ..FieldOptions::from((syn::Ident::new("foo"), syn::parse_type("String").unwrap()))
                 });
