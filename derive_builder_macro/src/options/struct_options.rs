@@ -2,7 +2,7 @@ use darling::util::IdentList;
 use syn::{self, Attribute, Ident};
 
 use derive_builder_core::{Bindings, Builder, BuilderPattern, BuildMethod, DeprecationNotes};
-use options::{DefaultExpression, LegacyVis, FieldItem};
+use options::{DefaultExpression, LegacyVis, Locate, FieldItem};
 
 /// Container for struct-level options encountered while parsing input to the
 /// `Builder` proc macro.
@@ -13,12 +13,17 @@ use options::{DefaultExpression, LegacyVis, FieldItem};
 /// 1. `forward_attrs(allow, cfg, doc)` specifies that attributes using those terms will be preserved in the parse
 ///    container.
 #[derive(Debug, Clone, PartialEq, Eq, FromDeriveInput)]
-#[darling(from_ident, attributes(builder), forward_attrs(allow, cfg, doc))]
+#[darling(from_ident, attributes(builder), forward_attrs(allow, cfg, doc), map = "Self::finish")]
 pub struct StructOptions {
+    // The first four properties come from the struct itself. Their names are defined
+    // by `darling`.
+
     pub ident: Ident,
     pub vis: syn::Visibility,
     pub generics: syn::Generics,
     pub attrs: Vec<Attribute>,
+
+    // These properties may appear in `#[builder(...)]` attributes on the struct.
 
     pub pattern: BuilderPattern,
     pub derive: IdentList,
@@ -37,6 +42,9 @@ pub struct StructOptions {
     #[darling(rename = "no_std", map = "no_std_to_bindings")]
     pub bindings: Bindings,
     
+    // This property is set by `StructOptions::finish`.
+
+    /// Any deprecation notes that should be included in the generated output.
     #[darling(skip)]
     pub deprecation_notes: DeprecationNotes,
 }
@@ -83,6 +91,39 @@ impl StructOptions {
             validate_fn: self.build_fn.validate.as_ref(),
         }
     }
+
+    /// Scan options for deprecation warnings.
+    fn finish(mut self) -> Self {
+        if !cfg!(feature = "struct_default") && self.default.is_some() {
+            let location = self.locate();
+            self.deprecation_notes.push(format!(
+                   "the meaning of `#[builder(default)]` on the struct level (found {}) will \
+                    change in the next version (see \
+                    https://github.com/colin-kiegel/rust-derive-builder/issues/61 for \
+                    more details). To squelch this message and adopt the new behavior now, \
+                    compile `derive_builder` with `--features \"struct_default\"`.",
+                    location));
+        }
+
+        if !cfg!(feature = "private_fields") && self.field.is_none() {
+            let location = self.locate();
+            self.deprecation_notes.push(format!(
+                "Builder fields will be private by default starting in the next version. \
+                (see https://github.com/colin-kiegel/rust-derive-builder/issues/86 for \
+                more details). To squelch this message and adopt the new behavior now, \
+                compile `derive_builder` with `--features \"private_fields\"` or add \
+                `field(<vis>)` to the builder attribute on the struct. (Found {})",
+                location));
+        }
+
+        self
+    }
+}
+
+impl Locate for StructOptions {
+    fn locate(&self) -> String {
+        format!("struct {}", self.ident)
+    }
 }
 
 impl LegacyVis for StructOptions {
@@ -118,14 +159,18 @@ impl From<Ident> for StructOptions {
     }
 }
 
+/// The `setter` word in the `#[builder(...)]` attribute at the struct level.
+///
+/// There is another struct - `options::field_options::SetterOptions` - which corresponds
+/// to the settings under this name in field context.
 #[derive(Default, Debug, PartialEq, Eq, Clone, FromMetaItem)]
 #[darling(default)]
 pub struct SetterOptions {
-    pub private: Option<()>,
-    pub public: Option<()>,
     pub prefix: Option<Ident>,
     pub into: bool,
     pub skip: bool,
+    private: Option<()>,
+    public: Option<()>,
 }
 
 impl LegacyVis for SetterOptions {

@@ -44,6 +44,10 @@ trait LegacyVis {
     }
 }
 
+trait Locate {
+    fn locate(&self) -> String;
+}
+
 /// The `field` meta item, in `#[builder(field(...))]`. This controls the privacy of the field(s) on
 /// the generated Builder struct.
 #[derive(Debug, Default, Clone, PartialEq, Eq, FromMetaItem)]

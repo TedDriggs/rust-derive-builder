@@ -3,7 +3,7 @@ use syn;
 
 use derive_builder_core::{Bindings, BuilderField, BuilderPattern, DeprecationNotes, Initializer, Setter};
 
-use options::{DefaultExpression, FieldItem, LegacyVis, StructOptions};
+use options::{DefaultExpression, FieldItem, LegacyVis, StructOptions, Locate};
 use super::struct_options::SetterOptions as StructSetterOptions;
 
 /// Options for a builder field.
@@ -38,6 +38,7 @@ pub struct FieldOptions {
     #[darling(default)]
     pub pattern: Option<BuilderPattern>,
 
+    /// Field-level settings; at the moment, only visibility is specified in this way.
     #[darling(default, map="FieldItem::take_vis")]
     pub field: Option<syn::Visibility>,
 
@@ -138,6 +139,12 @@ impl FieldOptions {
     /// provided, it will fall back to the field name.
     fn setter_name<'a>(&'a self) -> &'a syn::Ident {
         self.setter.name.as_ref().unwrap_or(&self.ident)
+    }
+}
+
+impl Locate for FieldOptions {
+    fn locate(&self) -> String {
+        format!("field {}", self.ident)
     }
 }
 
