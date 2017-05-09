@@ -1,3 +1,9 @@
+//! Options parsing from the `#[builder(...)]` attributes. The work of parsing is handled
+//! by the `darling` crate for reading attributes into structs:
+//!
+//! 1. Struct-level `builder` attributes are read into `StructOptions`
+//! 1. Field-level `builder` attributes are read into `FieldOptions`
+
 use darling::{self, FromMetaItem};
 use syn;
 
@@ -15,12 +21,13 @@ static VIS_PUBLIC: syn::Visibility = syn::Visibility::Public;
 /// Handler for old-style visibility declarations using `public` and `private` words in
 /// attribute. 
 ///
-/// There isn't static support for requiring only one appear, so this trait handles the collision case.
+/// There isn't static support for requiring `private` xor `public`, so this trait handles the 
+/// collision case by panicking.
 trait LegacyVis {
-    /// Whether the word `public` appeared in the meta item.
+    /// Returns `true` if the word `public` appeared in the meta item.
     fn declared_public(&self) -> bool;
 
-    /// Whether the word `private` appeared in the meta item.
+    /// Returns `true` if the word `private` appeared in the meta item.
     fn declared_private(&self) -> bool;
 
     /// To the declared visibility, if any.
@@ -29,7 +36,7 @@ trait LegacyVis {
     /// This function panics if the item was declared both public and private.
     fn to_visibility(&self) -> Option<&'static syn::Visibility> {
         match (self.declared_public(), self.declared_private()) {
-            (true, true) => panic!("A field cannot be both private and public"),
+            (true, true) => panic!("An item cannot be both private and public"),
             (true, false) => Some(&VIS_PUBLIC),
             (false, true) => Some(&VIS_INHERITED),
             (false, false) => None,
@@ -37,11 +44,13 @@ trait LegacyVis {
     }
 }
 
+/// The `field` meta item, in `#[builder(field(...))]`. This controls the privacy of the field(s) on
+/// the generated Builder struct.
 #[derive(Debug, Default, Clone, PartialEq, Eq, FromMetaItem)]
 #[darling(default)]
 pub struct FieldItem {
-    pub public: Option<()>,
-    pub private: Option<()>,
+    public: Option<()>,
+    private: Option<()>,
 }
 
 impl FieldItem {
