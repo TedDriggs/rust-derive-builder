@@ -122,7 +122,7 @@ impl StructOptions {
 
 impl Locate for StructOptions {
     fn locate(&self) -> String {
-        format!("struct {}", self.ident)
+        format!("on struct {}", self.ident)
     }
 }
 

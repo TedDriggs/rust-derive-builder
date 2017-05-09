@@ -144,7 +144,7 @@ impl FieldOptions {
 
 impl Locate for FieldOptions {
     fn locate(&self) -> String {
-        format!("field {}", self.ident)
+        format!("on field {}", self.ident)
     }
 }
 
