@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 use darling::util::IdentList;
 use syn::{self, Attribute, Ident};
 

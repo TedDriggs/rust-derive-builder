@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use darling::util::Override;
 use syn;
 
