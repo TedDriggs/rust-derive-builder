@@ -33,7 +33,7 @@ use syn;
 ///
 /// Proof of concept:
 /// - https://play.rust-lang.org/?gist=8394141c07d1f6d75d314818389eb4d8
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DeprecationNotes(Vec<String>);
 
 impl ToTokens for DeprecationNotes {

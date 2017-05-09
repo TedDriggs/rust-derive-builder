@@ -3,7 +3,8 @@
 ///
 /// It can also be generalized to methods with different parameter sets and return types,
 /// e.g. the `build()` method.
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, FromMetaItem)]
+#[darling(default, rename_all = "snake_case")]
 pub enum BuilderPattern {
     /// E.g. `fn bar(self, bar: Bar) -> Self`.
     Owned,

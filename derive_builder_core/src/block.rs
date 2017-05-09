@@ -1,4 +1,6 @@
 use std::str::FromStr;
+
+use darling::{self, FromMetaItem};
 use quote::{Tokens, ToTokens};
 use syn::{self, TokenTree};
 
@@ -24,7 +26,7 @@ use syn::{self, TokenTree};
 /// #    ));
 /// # }
 /// ```
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Block(Vec<TokenTree>);
 
 impl ToTokens for Block {
@@ -48,6 +50,12 @@ impl FromStr for Block {
     /// parsing error.
     fn from_str(expr: &str) -> Result<Self, Self::Err> {
         Ok(Block(syn::parse_token_trees(expr)?))
+    }
+}
+
+impl FromMetaItem for Block {
+    fn from_string(expr: &str) -> darling::Result<Self> {
+        Block::from_str(expr).map_err(|e| darling::Error::unknown_value(&e))
     }
 }
 

@@ -4,6 +4,8 @@
 #![deny(warnings)]
 
 extern crate proc_macro;
+#[macro_use]
+extern crate darling;
 extern crate syn;
 #[macro_use]
 extern crate quote;
@@ -20,9 +22,9 @@ mod log_disabled;
 mod options;
 
 use proc_macro::TokenStream;
+use darling::{FromDeriveInput, FromField};
 #[cfg(feature = "logging")]
 use std::sync::{Once, ONCE_INIT};
-use options::{struct_options_from, field_options_from};
 
 #[cfg(feature = "logging")]
 static INIT_LOGGER: Once = ONCE_INIT;
@@ -47,28 +49,31 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
 fn builder_for_struct(ast: syn::MacroInput) -> quote::Tokens {
     debug!("Deriving Builder for `{}`.", ast.ident);
-    let (opts, field_defaults) = struct_options_from(&ast);
+
+    let s_level = options::StructOptions::from_derive_input(&ast).unwrap();
 
     let fields = match ast.body {
         syn::Body::Struct(syn::VariantData::Struct(fields)) => fields,
         _ => panic!("`#[derive(Builder)]` can only be used with braced structs"),
     };
 
-    let mut builder = opts.as_builder();
-    let mut build_fn = opts.as_build_method();
+    let mut builder = s_level.as_builder();
+    let mut build_fn = s_level.as_build_method();
+
+    for f in fields {
+        let mut f_level = options::FieldOptions::from_field(&f).unwrap();
+        f_level.with_defaults(&s_level);
+
+
+        builder.push_field(f_level.as_builder_field());
+        builder.push_setter_fn(f_level.as_setter());
+        build_fn.push_initializer(f_level.as_initializer());
+    }
 
     builder.doc_comment(format!(include_str!("doc_tpl/builder_struct.md"),
                                 struct_name = ast.ident.as_ref()));
     build_fn.doc_comment(format!(include_str!("doc_tpl/builder_method.md"),
                                 struct_name = ast.ident.as_ref()));
-
-    for f in fields {
-        let f_opts = field_options_from(f, &field_defaults);
-
-        builder.push_field(f_opts.as_builder_field());
-        builder.push_setter_fn(f_opts.as_setter());
-        build_fn.push_initializer(f_opts.as_initializer());
-    }
 
     builder.push_build_fn(build_fn);
 

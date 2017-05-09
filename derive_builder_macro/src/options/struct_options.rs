@@ -1,74 +1,231 @@
-use syn;
-use derive_builder_core::{DeprecationNotes, BuilderPattern, Builder, BuildMethod, Bindings};
-use options::DefaultExpression;
+#![allow(dead_code, unused_imports)]
 
-/// These struct options define how the builder is generated.
-#[derive(Debug, Clone)]
+use darling::util::IdentList;
+use syn::{self, Attribute, Ident};
+
+use derive_builder_core::{Bindings, Builder, BuilderPattern, BuildMethod, DeprecationNotes};
+use options::{DefaultExpression, LegacyVis, FieldItem};
+
+/// Container for struct-level options encountered while parsing input to the
+/// `Builder` proc macro.
+///
+/// # Darling Config
+/// 1. `from_ident` specifies that a conversion from `syn::Ident` exists. This makes all other fields optional.
+/// 1. `attributes(builder)` specifies that non-reserved properties will be sought after in `builder` attributes.
+/// 1. `forward_attrs(allow, cfg, doc)` specifies that attributes using those terms will be preserved in the parse
+///    container.
+#[derive(Debug, Clone, PartialEq, Eq, FromDeriveInput)]
+#[darling(from_ident, attributes(builder), forward_attrs(allow, cfg, doc))]
 pub struct StructOptions {
-    /// Whether or not this struct should implement its own build method.
-    pub build_fn_enabled: bool,
-    /// The name of the emitted build method.
-    pub build_fn_name: syn::Ident,
-    /// Name of the builder struct, e.g. `FooBuilder`.
-    pub builder_ident: syn::Ident,
-    /// Visibility of the builder struct, e.g. `syn::Visibility::Public`.
-    pub builder_visibility: syn::Visibility,
-    /// The additional traits to derive on the builder.
-    pub derives: Vec<syn::Ident>,
-    /// How the build method takes and returns `self` (e.g. mutably).
-    pub builder_pattern: BuilderPattern,
-    /// Target struct name.
-    pub build_target_ident: syn::Ident,
-    /// Represents lifetimes and type parameters attached to the declaration of items.
+    pub ident: Ident,
+    pub vis: syn::Visibility,
     pub generics: syn::Generics,
-    /// Emit deprecation notes to the user,
-    /// e.g. if a deprecated attribute was used in `derive_builder`.
-    pub deprecation_notes: DeprecationNotes,
-    /// Number of fields on the target struct.
-    pub struct_size_hint: usize,
-    /// Bindings to libstd or libcore.
+    pub attrs: Vec<Attribute>,
+
+    pub pattern: BuilderPattern,
+    pub derive: IdentList,
+    pub name: Option<Ident>,
+    pub build_fn: BuildFnOptions,
+    pub setter: Option<SetterOptions>,
+    pub try_setter: Option<bool>,
+    pub default: Option<DefaultExpression>,
+
+    pub public: Option<()>,
+    pub private: Option<()>,
+
+    #[darling(map = "FieldItem::take_vis")]
+    pub field: Option<syn::Visibility>,
+    
+    #[darling(rename = "no_std", map = "no_std_to_bindings")]
     pub bindings: Bindings,
-    /// Default expression for the whole struct, e.g. `#[builder(default)]` (default to None).
-    pub default_expression: Option<DefaultExpression>,
-    /// Path to the optional validation function to invoke before the
-    /// macro-generated `build` method executes.
-    pub validate_fn: Option<syn::Path>,
+    
+    #[darling(skip)]
+    pub deprecation_notes: DeprecationNotes,
 }
 
 impl StructOptions {
-    /// Returns a `Builder` according to the options.
+    /// Compute the builder identity.
+    fn builder_ident(&self) -> Ident {
+        self.name
+            .clone()
+            .unwrap_or_else(|| format!("{}Builder", self.ident).into())
+    }
+
     pub fn as_builder<'a>(&'a self) -> Builder<'a> {
         Builder {
             enabled: true,
-            ident: &self.builder_ident,
-            pattern: self.builder_pattern,
-            derives: &self.derives,
+            ident: self.builder_ident(),
+            pattern: self.pattern,
+            derives: self.derive.as_slice(),
             generics: Some(&self.generics),
-            visibility: &self.builder_visibility,
-            fields: Vec::with_capacity(self.struct_size_hint),
-            functions: Vec::with_capacity(self.struct_size_hint),
+            visibility: self.to_visibility().unwrap_or(&self.vis),
+            fields: vec![],
+            functions: vec![],
             doc_comment: None,
+            bindings: Default::default(),
             deprecation_notes: self.deprecation_notes.clone(),
-            bindings: self.bindings,
         }
     }
-    /// Returns a `BuildMethod` according to the options.
+
     pub fn as_build_method<'a>(&'a self) -> BuildMethod<'a> {
-        let (_impl_generics, ty_generics, _where_clause) = self.generics.split_for_impl();
+        let (_, ty_generics, _) = self.generics.split_for_impl();
         BuildMethod {
-            enabled: self.build_fn_enabled,
-            ident: &self.build_fn_name,
-            visibility: &self.builder_visibility,
-            pattern: self.builder_pattern,
-            target_ty: &self.build_target_ident,
+            enabled: !self.build_fn.skip,
+            ident: &self.build_fn.name,
+            visibility: &self.vis,
+            pattern: self.pattern,
+            target_ty: &self.ident,
             target_ty_generics: Some(ty_generics),
-            initializers: Vec::with_capacity(self.struct_size_hint),
+            initializers: vec![],
             doc_comment: None,
             bindings: self.bindings,
-            default_struct: self.default_expression
+            default_struct: self.default
                 .as_ref()
                 .map(DefaultExpression::parse_block),
-            validate_fn: self.validate_fn.as_ref(),
+            validate_fn: self.build_fn.validate.as_ref(),
         }
+    }
+}
+
+impl LegacyVis for StructOptions {
+    fn declared_private(&self) -> bool {
+        self.private.is_some()
+    }
+
+    fn declared_public(&self) -> bool {
+        self.public.is_some()
+    }
+}
+
+impl From<Ident> for StructOptions {
+    fn from(ident: Ident) -> Self {
+        StructOptions {
+            ident,
+            vis: syn::Visibility::Inherited,
+            generics: Default::default(),
+            attrs: Default::default(),
+            pattern: Default::default(),
+            derive: Default::default(),
+            name: Default::default(),
+            build_fn: Default::default(),
+            setter: Default::default(),
+            try_setter: Default::default(),
+            default: Default::default(),
+            field: Default::default(),
+            private: Default::default(),
+            public: Default::default(),
+            bindings: Default::default(),
+            deprecation_notes: Default::default(),
+        }
+    }
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone, FromMetaItem)]
+#[darling(default)]
+pub struct SetterOptions {
+    pub private: Option<()>,
+    pub public: Option<()>,
+    pub prefix: Option<Ident>,
+    pub into: bool,
+    pub skip: bool,
+}
+
+impl LegacyVis for SetterOptions {
+    fn declared_private(&self) -> bool {
+        self.private.is_some()
+    }
+
+    fn declared_public(&self) -> bool {
+        self.public.is_some()
+    }
+}
+
+/// Struct-level control over the generated build function.
+#[derive(Debug, Clone, PartialEq, Eq, FromMetaItem)]
+#[darling(default)]
+pub struct BuildFnOptions {
+    /// Whether or not the build function should be skipped.
+    pub skip: bool,
+
+    /// The name of the build function to generate, if one is being generated.
+    pub name: Ident,
+
+    /// The path to the pre-build validation function that should be used, if any.
+    pub validate: Option<syn::Path>,
+}
+
+impl Default for BuildFnOptions {
+    fn default() -> Self {
+        BuildFnOptions {
+            name: Ident::new("build"),
+            skip: Default::default(),
+            validate: Default::default(),
+        }
+    }
+}
+
+
+
+/// Converts the presence of the `no_std` field to a `Bindings` instance.
+fn no_std_to_bindings(b: bool) -> Bindings {
+    if b { Bindings::NoStd } else { Bindings::Std }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use darling::FromDeriveInput;
+    use derive_builder_core::Bindings;
+
+    #[test]
+    fn setter_into() {
+        let di = syn::parse_derive_input(r#"
+            #[derive(Builder)]
+            #[builder(setter(into))]
+            struct Bar {
+                foo: u8,
+                bar: String,
+            }
+        "#).unwrap();
+
+        assert_eq!(StructOptions::from_derive_input(&di).unwrap(), StructOptions {
+            setter: Some(SetterOptions {
+                into: true,
+                ..Default::default()
+            }),
+            ..Ident::new("Bar").into()
+        });
+    }
+
+    #[test]
+    fn full_struct() {
+        let di = syn::parse_derive_input(r#"
+            #[derive(Default, Builder)]
+            #[builder(no_std, setter(into), default, name = "BarBaz", build_fn(skip))]
+            pub struct Bar<T> {
+                foo: u8,
+                bar: T,
+            }
+        "#).unwrap();
+
+        assert_eq!(StructOptions::from_derive_input(&di).unwrap(), StructOptions {
+            setter: Some(SetterOptions {
+                into: true,
+                ..Default::default()
+            }),
+            build_fn: BuildFnOptions {
+                skip: true,
+                ..Default::default()
+            },
+            generics: syn::Generics {
+                ty_params: vec![syn::Ident::new("T").into()],
+                ..syn::Generics::default()
+            },
+            vis: syn::Visibility::Public,
+            name: Ident::new("BarBaz").into(),
+            default: Some(DefaultExpression::Trait),
+            bindings: Bindings::NoStd,
+            ..Ident::new("Bar").into()
+        });
     }
 }

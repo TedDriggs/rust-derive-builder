@@ -45,7 +45,7 @@ pub struct Builder<'a> {
     /// Enables code generation for this builder struct.
     pub enabled: bool,
     /// Name of this builder struct.
-    pub ident: &'a syn::Ident,
+    pub ident: syn::Ident,
     /// Pattern of this builder struct.
     pub pattern: BuilderPattern,
     /// Traits to automatically derive on the builder type.
@@ -72,8 +72,8 @@ impl<'a> ToTokens for Builder<'a> {
     fn to_tokens(&self, tokens: &mut Tokens) {
         if self.enabled {
             trace!("Deriving builder `{}`.", self.ident);
-            let builder_vis = self.visibility;
-            let builder_ident = self.ident;
+            let builder_vis = &self.visibility;
+            let builder_ident = self.ident.clone();
             let derives = self.derives;
             let bounded_generics = self.compute_impl_bounds();
             let (impl_generics, _, _) = bounded_generics.split_for_impl();
@@ -174,7 +174,7 @@ macro_rules! default_builder {
     () => {
         Builder {
             enabled: true,
-            ident: &syn::Ident::new("FooBuilder"),
+            ident: syn::Ident::new("FooBuilder"),
             pattern: Default::default(),
             derives: &vec![],
             generics: None,
