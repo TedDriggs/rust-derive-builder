@@ -8,7 +8,7 @@ use super::struct_options::SetterOptions as StructSetterOptions;
 
 /// Options for a builder field.
 #[derive(Debug, Clone, FromField, PartialEq, Eq)]
-#[darling(attributes(builder), forward_attrs(allow, cfg, doc))]
+#[darling(from_ident, attributes(builder), forward_attrs(allow, cfg, doc))]
 pub struct FieldOptions {
     /// The identifier of the field.
     pub ident: syn::Ident,
@@ -23,29 +23,24 @@ pub struct FieldOptions {
     pub attrs: Vec<syn::Attribute>,
 
     /// Setter options declared on the field in `#[builder(setter(...))]`.
-    #[darling(default, map = "SetterOptions::from_override")]
+    #[darling(map = "SetterOptions::from_override")]
     pub setter: SetterOptions,
 
     /// Value for `#[builder(try_setter)]`.
-    #[darling(default)]
     pub try_setter: Option<bool>,
 
     /// Value for `#[builder(default)]` or `#[builder(default = "BLOCK")]`.
-    #[darling(default)]
     pub default: Option<DefaultExpression>,
 
     /// The pattern of builder being used.
-    #[darling(default)]
     pub pattern: Option<BuilderPattern>,
 
     /// Field-level settings; at the moment, only visibility is specified in this way.
-    #[darling(default, map="FieldItem::take_vis")]
+    #[darling(map="FieldItem::take_vis")]
     pub field: Option<syn::Visibility>,
 
-    #[darling(default)]
     pub private: Option<()>,
 
-    #[darling(default)]
     pub public: Option<()>,
 
     /// The std/core bindings used.
@@ -158,11 +153,12 @@ impl LegacyVis for FieldOptions {
     }
 }
 
-impl From<(syn::Ident, syn::Ty)> for FieldOptions {
-    fn from((ident, ty): (syn::Ident, syn::Ty)) -> Self {
+impl From<Option<syn::Ident>> for FieldOptions {
+    fn from(ident: Option<syn::Ident>) -> Self {
+        let ident = ident.expect("Tuple structs are not supported");
         FieldOptions {
             ident,
-            ty,
+            ty: syn::Ty::Never,
             vis: syn::Visibility::Inherited,
             setter: Default::default(),
             try_setter: Default::default(),
@@ -255,13 +251,14 @@ mod tests {
         if let syn::Body::Struct(syn::VariantData::Struct(fields)) = di.body {
             assert_eq!(FieldOptions::from_field(&fields[0]).unwrap(), 
                 FieldOptions {
+                    ty: syn::parse_type("String").unwrap(),
                     setter: SetterOptions {
                         into: Some(true),
                         skip: None,
                         name: None,
                         prefix: None,
                     },
-                    ..FieldOptions::from((syn::Ident::new("foo"), syn::parse_type("String").unwrap()))
+                    ..FieldOptions::from(Some(syn::Ident::new("foo")))
                 });
         } else {
             panic!("Didn't read the struct correctly");
@@ -280,11 +277,12 @@ mod tests {
         if let syn::Body::Struct(syn::VariantData::Struct(fields)) = di.body {
             assert_eq!(FieldOptions::from_field(&fields[0]).unwrap(), 
                 FieldOptions {
+                    ty: syn::parse_type("String").unwrap(),
                     setter: SetterOptions {
                         name: Some("baz".into()),
                         ..Default::default()
                     },
-                    ..FieldOptions::from(("bar".into(), syn::parse_type("String").unwrap()))
+                    ..FieldOptions::from(Some("bar".into()))
                 });
         } else {
             panic!("Didn't read the struct correctly")

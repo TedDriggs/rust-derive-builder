@@ -224,7 +224,7 @@ mod tests {
     fn setter_into() {
         let di = syn::parse_derive_input(r#"
             #[derive(Builder)]
-            #[builder(setter(into))]
+            #[builder(field(private), setter(into))]
             struct Bar {
                 foo: u8,
                 bar: String,
@@ -232,6 +232,7 @@ mod tests {
         "#).unwrap();
 
         assert_eq!(StructOptions::from_derive_input(&di).unwrap(), StructOptions {
+            field: Some(syn::Visibility::Inherited),
             setter: Some(SetterOptions {
                 into: true,
                 ..Default::default()
